@@ -11,12 +11,13 @@ BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR = BASE_DIR / "models"
 METRICS_PATH = MODEL_DIR / "metrics.json"
 
-st.set_page_config(page_title="Loan Predictor AI", page_icon="🏦", layout="wide")
+st.set_page_config(page_title="Loan Predictor AI", page_icon="🏦", layout="wide", initial_sidebar_state="expanded")
 
 def apply_modern_css():
-    # Removed the background color overrides so Streamlit's native Dark/Light mode handles text correctly.
     st.markdown("""
         <style>
+        /* General styling for dark sleek theme */
+        
         /* Button styling */
         button[kind="primary"] {
             background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
@@ -30,6 +31,45 @@ def apply_modern_css():
             transform: translateY(-2px);
             box-shadow: 0 6px 12px rgba(124, 58, 237, 0.3);
         }
+        
+        /* Style for the logo */
+        .logo-img {
+            border-radius: 15px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        /* Custom Horizontal Radio Tabs to look like streamlit-option-menu */
+        div[role="radiogroup"] {
+            flex-direction: row;
+            justify-content: flex-end;
+            gap: 20px;
+            padding-bottom: 10px;
+            margin-top: 20px;
+            margin-bottom: 5px;
+        }
+        /* Hide the radio button circle */
+        div[role="radiogroup"] > label > div:first-child {
+            display: none !important;
+        }
+        /* Style the radio button text */
+        div[role="radiogroup"] > label p {
+            font-size: 16px !important;
+            font-weight: 500 !important;
+            color: #b0bec5 !important;
+            transition: all 0.3s ease !important;
+            margin: 0 !important;
+            padding: 5px 10px !important;
+            border-bottom: 3px solid transparent;
+        }
+        div[role="radiogroup"] > label:hover p {
+            color: #ffffff !important;
+            border-bottom: 3px solid rgba(255, 75, 75, 0.5); /* subtle red underline on hover */
+        }
+        /* Style the active selected radio text */
+        div[role="radiogroup"] > label[data-checked="true"] p {
+            color: #ff4b4b !important; /* Active red */
+            border-bottom: 3px solid #ff4b4b !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -42,7 +82,12 @@ def load_models():
         ("Naive Bayes", "naive_bayes.joblib")
     ]:
         try:
-            models[model_name] = joblib.load(MODEL_DIR / filename)
+            model = joblib.load(MODEL_DIR / filename)
+            if model_name == "Logistic Regression":
+                estimator = model.steps[-1][1] if hasattr(model, 'steps') else model
+                if not hasattr(estimator, 'multi_class'):
+                    estimator.multi_class = 'ovr'
+            models[model_name] = model
         except Exception:
             pass
     return models
@@ -55,41 +100,113 @@ def load_metrics():
     except Exception:
         return {}
 
-def render_home(models):
-    st.title("🏦 AI Loan Approval Prediction")
-    st.markdown("Enter applicant details below to instantly predict loan approval status with our advanced ML models.")
-    st.markdown("---")
-    
+def render_home(models, filters):
     if not models:
         st.error("Models not found. Please run the training notebook first.")
         return
 
     selected_model_name = st.selectbox("🤖 Select Prediction Model", list(models.keys()))
     model = models[selected_model_name]
+    
+    # Batch Prediction Section
+    st.markdown("### 📄 Upload CSV File for Batch Prediction")
+    uploaded_file = st.file_uploader("Upload your dataset (.csv) Limit 200MB per file", type="csv")
+    
+    if uploaded_file is not None:
+        try:
+            st.success("File uploaded successfully!")
+            df = pd.read_csv(uploaded_file)
+            
+            # Apply filters from sidebar to the preview (optional feature for Data Explorer aspect)
+            filtered_df = df.copy()
+            if filters.get("credit_history") != "All":
+                val = 1 if filters["credit_history"] == "Good (1.0)" else 0
+                if "Credit_History" in filtered_df.columns:
+                    filtered_df = filtered_df[filtered_df["Credit_History"] == val]
+            if filters.get("property_area") != "All":
+                if "Property_Area" in filtered_df.columns:
+                    filtered_df = filtered_df[filtered_df["Property_Area"] == filters["property_area"]]
+            
+            st.markdown("**Data Preview:**")
+            st.dataframe(filtered_df.head(10))
+            
+            if st.button("🔍 Run Batch Predictions", type="primary"):
+                with st.spinner("Processing batch predictions..."):
+                    pred_df = df.copy()
+                    
+                    # Preprocess for model (calculate TotalIncome_log if not present)
+                    if "TotalIncome_log" not in pred_df.columns and "ApplicantIncome" in pred_df.columns and "CoapplicantIncome" in pred_df.columns:
+                        total_income = pred_df["ApplicantIncome"] + pred_df["CoapplicantIncome"]
+                        pred_df["TotalIncome_log"] = np.log(total_income.replace(0, np.nan)).fillna(0)
+                        
+                    # Drop extra columns that model doesn't expect (like Loan_ID, Loan_Status) if they exist
+                    # We just pass the exact 12 features the model expects
+                    expected_features = ["Gender", "Married", "Dependents", "Education", "Self_Employed", 
+                                         "Property_Area", "ApplicantIncome", "CoapplicantIncome", 
+                                         "LoanAmount", "Loan_Amount_Term", "Credit_History", "TotalIncome_log"]
+                    
+                    try:
+                        X_batch = pred_df[expected_features].copy()
+                        predictions = model.predict(X_batch)
+                        
+                        # Calculate probabilities
+                        try:
+                            probabilities = model.predict_proba(X_batch)[:, 1]
+                        except Exception:
+                            probabilities = np.where(predictions == 1, 1.0, 0.0)
+                            
+                        pred_df["Predicted_Status"] = np.where(predictions == 1, "Approved", "Rejected")
+                        pred_df["Confidence"] = np.round(probabilities * 100, 2).astype(str) + "%"
+                        
+                        st.markdown("### Batch Prediction Results")
+                        st.dataframe(pred_df)
+                        
+                        # Download link
+                        csv = pred_df.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="Download Results as CSV",
+                            data=csv,
+                            file_name='loan_batch_predictions.csv',
+                            mime='text/csv',
+                        )
+                    except KeyError as e:
+                        st.error(f"Missing required columns in CSV for prediction: {e}")
+        except Exception as e:
+            st.error(f"Error reading file: {e}")
 
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # Manual Prediction Section
+    st.markdown("### 📝 Predict Manually by Entering Information")
+    
     with st.form("loan_form"):
-        st.subheader("Applicant Information")
-        col1, col2 = st.columns(2)
+        # Multi-column spacious layout (4 columns)
+        col1, col2, col3, col4 = st.columns(4)
 
         with col1:
             gender = st.selectbox("Gender", ["Male", "Female"])
             married = st.selectbox("Married", ["Yes", "No"])
-            dependents = st.selectbox("Dependents", ["0", "1", "2", "3+"])
-            education = st.selectbox("Education", ["Graduate", "Not Graduate"])
-            self_employed = st.selectbox("Self Employed", ["No", "Yes"])
-            property_area = st.selectbox("Property Area", ["Urban", "Semiurban", "Rural"])
-
-        with col2:
-            applicant_income = st.number_input("Applicant Income ($)", min_value=0, value=5000, step=100)
-            coapplicant_income = st.number_input("Coapplicant Income ($)", min_value=0, value=0, step=100)
-            loan_amount = st.number_input("Loan Amount (in thousands)", min_value=0, value=120, step=5)
-            loan_term = st.selectbox(
-                "Loan Term (days)", [360, 180, 120, 84, 60, 36, 12, 300, 480], index=0
-            )
             credit_history = st.selectbox("Credit History", ["Good (1)", "Bad (0)"])
 
+        with col2:
+            dependents = st.selectbox("No. of Dependents", ["0", "1", "2", "3+"])
+            education = st.selectbox("Education", ["Graduate", "Not Graduate"])
+            self_employed = st.selectbox("Self Employed", ["No", "Yes"])
+            
+        with col3:
+            applicant_income = st.number_input("Applicant Income", min_value=0, value=5000, step=100)
+            coapplicant_income = st.number_input("Coapplicant Income", min_value=0, value=0, step=100)
+            property_area = st.selectbox("Property Area", ["Urban", "Semiurban", "Rural"])
+
+        with col4:
+            loan_amount = st.number_input("Loan Amount (thousands)", min_value=0, value=120, step=5)
+            loan_term = st.selectbox("Loan Term (months)", [360, 180, 120, 84, 60, 36, 12, 300, 480], index=0)
+            
         st.markdown("<br>", unsafe_allow_html=True)
-        submitted = st.form_submit_button("Run Prediction Engine", use_container_width=True)
+        # Center the submit button
+        _, sub_col, _ = st.columns([1, 2, 1])
+        with sub_col:
+            submitted = st.form_submit_button("Run Prediction Engine", type="primary", use_container_width=True)
 
     if submitted:
         total_income = applicant_income + coapplicant_income
@@ -110,12 +227,10 @@ def render_home(models):
             "TotalIncome_log": total_income_log,
         }])
 
-        # Safely predict and handle model versioning errors with predict_proba
         prediction = model.predict(input_df)[0]
         try:
             probability = model.predict_proba(input_df)[0][1]
         except AttributeError:
-            # Fallback if the saved model throws an AttributeError due to scikit-learn version differences
             probability = 1.0 if prediction == 1 else 0.0
 
         st.markdown("---")
@@ -131,8 +246,8 @@ def render_home(models):
             conf = probability if prediction == 1 else (1 - probability)
             st.info(f"**Confidence Score:** {conf:.1%} likelihood.")
 
-def render_performance(models):
-    st.title("📊 Model Performance Metrics")
+def render_performance(models, filters):
+    st.subheader("📊 Model Performance Metrics")
     st.markdown("Compare how accurate each machine learning model is based on our test data.")
     st.markdown("---")
     
@@ -150,7 +265,6 @@ def render_performance(models):
         st.markdown(f"**Trained on:** {metrics.get('n_train', 0)} rows | **Tested on:** {metrics.get('n_test', 0)} rows.")
         
         st.markdown("### Metrics Bar Chart")
-        # Creating a dynamic bar chart for the selected model
         chart_data = pd.DataFrame({
             "Metric": ["Accuracy", "Precision", "Recall", "F1 Score"],
             "Score": [
@@ -162,19 +276,18 @@ def render_performance(models):
         })
         chart_data.set_index("Metric", inplace=True)
         st.bar_chart(chart_data)
-        
     else:
         st.warning("Metrics not available.")
 
-def render_visualizations():
-    st.title("📈 Visualizations & Insights")
+def render_visualizations(models, filters):
+    st.subheader("📈 Visualizations & Insights")
     st.markdown("Deep dive into how the models work and which features are most important.")
     st.markdown("---")
     
     st.subheader("Model Comparison")
     comparison_img = MODEL_DIR / "model_comparison.png"
     if comparison_img.exists():
-        st.image(Image.open(comparison_img), use_column_width=True, caption="Accuracy vs F1-Score across all models")
+        st.image(Image.open(comparison_img), use_container_width=True, caption="Accuracy vs F1-Score across all models")
         
     st.divider()
     
@@ -183,16 +296,16 @@ def render_visualizations():
         st.subheader("Confusion Matrices")
         cm_img = MODEL_DIR / "confusion_matrices.png"
         if cm_img.exists():
-            st.image(Image.open(cm_img), use_column_width=True)
+            st.image(Image.open(cm_img), use_container_width=True)
             
     with col2:
         st.subheader("Feature Importances")
         fi_img = MODEL_DIR / "feature_importance.png"
         if fi_img.exists():
-            st.image(Image.open(fi_img), use_column_width=True, caption="Top drivers for the Random Forest model")
+            st.image(Image.open(fi_img), use_container_width=True, caption="Top drivers for the Random Forest model")
 
-def render_about():
-    st.title("ℹ️ About the Project")
+def render_about(models, filters):
+    st.subheader("ℹ️ About the Project")
     st.markdown("---")
     st.markdown("""
     ### Loan Approval Prediction System
@@ -201,6 +314,7 @@ def render_about():
     **Features:**
     - **Multiple ML Models:** Logistic Regression, Random Forest, Naive Bayes.
     - **Live Inference:** Instant predictions with confidence scores.
+    - **Batch Processing:** Upload a CSV for bulk applicant scoring.
     - **Modern UI:** Built with Streamlit, providing a sleek, reactive single-page application experience.
     
     **Dataset:**
@@ -211,35 +325,41 @@ def render_about():
 def main():
     apply_modern_css()
     
-    # Sidebar Navigation
-    try:
-        st.sidebar.image(Image.open(BASE_DIR / "logo.png"), width=200)
-    except Exception:
-        pass
-    st.sidebar.title("Loan Approval Prediction AI")
+    # Optional Filters Sidebar
+    st.sidebar.markdown("### ⚙️ Filters")
+    filter_credit = st.sidebar.selectbox("Credit History", ["All", "Good (1.0)", "Bad (0.0)"])
+    filter_property = st.sidebar.selectbox("Property Area", ["All", "Urban", "Semiurban", "Rural"])
     st.sidebar.markdown("---")
+    st.sidebar.caption("Filters apply to uploaded Data Preview")
     
-    # Removed emojis from the sidebar keys
+    filters = {
+        "credit_history": filter_credit,
+        "property_area": filter_property
+    }
+
     nav_options = {
-        "Home": render_home,
-        "Performance": render_performance,
+        "Applicant Input": render_home,
+        "Model Performance": render_performance,
         "Visualizations": render_visualizations,
         "About": render_about
     }
     
-    selection = st.sidebar.radio("Go to", list(nav_options.keys()))
+    # Global Header
+    st.markdown("<h2>💰 AI-Powered Loan Approval Predictor</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #bbb;'>Make accurate loan predictions with ML - Upload your CSV or enter individual data below.</p>", unsafe_allow_html=True)
     
-    st.sidebar.markdown("---")
-    st.sidebar.caption("© 2026 AI Loan Predictor")
-    
-    # Load models once
-    models = load_models()
+    # Custom styled horizontal radio button mimicking option-menu tabs
+    selection = st.radio(
+        "Navigation", 
+        list(nav_options.keys()), 
+        horizontal=True, 
+        label_visibility="collapsed"
+    )
+    st.markdown("---")
     
     # Execute the selected page function
-    if selection in ["Home", "Performance"]:
-        nav_options[selection](models)
-    else:
-        nav_options[selection]()
+    models = load_models()
+    nav_options[selection](models, filters)
 
 if __name__ == "__main__":
     main()
