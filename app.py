@@ -252,21 +252,22 @@ def render_visualizations(models, filters):
     st.markdown("Deep dive into how the models work and which features are most important.")
     st.markdown("---")
     
-    st.subheader("Model Comparison")
-    comparison_img = MODEL_DIR / "model_comparison.png"
-    if comparison_img.exists():
-        st.image(Image.open(comparison_img), use_container_width=True, caption="Accuracy vs F1-Score across all models")
+    _, center_col, _ = st.columns([1, 3, 1])
+    with center_col:
+        st.subheader("Model Comparison")
+        comparison_img = MODEL_DIR / "model_comparison.png"
+        if comparison_img.exists():
+            st.image(Image.open(comparison_img), use_container_width=True, caption="Accuracy vs F1-Score across all models")
+            
+        st.divider()
         
-    st.divider()
-    
-    col1, col2 = st.columns(2)
-    with col1:
         st.subheader("Confusion Matrices")
         cm_img = MODEL_DIR / "confusion_matrices.png"
         if cm_img.exists():
             st.image(Image.open(cm_img), use_container_width=True)
             
-    with col2:
+        st.divider()
+            
         st.subheader("Feature Importances")
         fi_img = MODEL_DIR / "feature_importance.png"
         if fi_img.exists():
