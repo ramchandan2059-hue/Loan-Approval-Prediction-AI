@@ -37,39 +37,6 @@ def apply_modern_css():
             border-radius: 15px;
             box-shadow: 0 6px 12px rgba(0,0,0,0.15);
         }
-        
-        /* Custom Horizontal Radio Tabs to look like streamlit-option-menu */
-        div[role="radiogroup"] {
-            flex-direction: row;
-            justify-content: flex-end;
-            gap: 20px;
-            padding-bottom: 10px;
-            margin-top: 20px;
-            margin-bottom: 5px;
-        }
-        /* Hide the radio button circle */
-        div[role="radiogroup"] > label > div:first-child {
-            display: none !important;
-        }
-        /* Style the radio button text */
-        div[role="radiogroup"] > label p {
-            font-size: 16px !important;
-            font-weight: 500 !important;
-            color: #b0bec5 !important;
-            transition: all 0.3s ease !important;
-            margin: 0 !important;
-            padding: 5px 10px !important;
-            border-bottom: 3px solid transparent;
-        }
-        div[role="radiogroup"] > label:hover p {
-            color: #ffffff !important;
-            border-bottom: 3px solid rgba(255, 75, 75, 0.5); /* subtle red underline on hover */
-        }
-        /* Style the active selected radio text */
-        div[role="radiogroup"] > label[data-checked="true"] p {
-            color: #ff4b4b !important; /* Active red */
-            border-bottom: 3px solid #ff4b4b !important;
-        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -101,6 +68,11 @@ def load_metrics():
         return {}
 
 def render_home(models, filters):
+    # Header area
+    st.markdown("<h2>🏦 AI Loan Approval Prediction</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #bbb;'>Enter applicant details below to instantly predict loan approval status with our advanced ML models.</p>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
     if not models:
         st.error("Models not found. Please run the training notebook first.")
         return
@@ -119,11 +91,11 @@ def render_home(models, filters):
             
             # Apply filters from sidebar to the preview (optional feature for Data Explorer aspect)
             filtered_df = df.copy()
-            if filters.get("credit_history") != "All":
+            if filters and filters.get("credit_history") != "All":
                 val = 1 if filters["credit_history"] == "Good (1.0)" else 0
                 if "Credit_History" in filtered_df.columns:
                     filtered_df = filtered_df[filtered_df["Credit_History"] == val]
-            if filters.get("property_area") != "All":
+            if filters and filters.get("property_area") != "All":
                 if "Property_Area" in filtered_df.columns:
                     filtered_df = filtered_df[filtered_df["Property_Area"] == filters["property_area"]]
             
@@ -177,30 +149,26 @@ def render_home(models, filters):
     st.markdown("<br><br>", unsafe_allow_html=True)
 
     # Manual Prediction Section
-    st.markdown("### 📝 Predict Manually by Entering Information")
+    st.markdown("### Applicant Information")
     
     with st.form("loan_form"):
-        # Multi-column spacious layout (4 columns)
-        col1, col2, col3, col4 = st.columns(4)
+        # 2 columns layout
+        col1, col2 = st.columns(2)
 
         with col1:
             gender = st.selectbox("Gender", ["Male", "Female"])
             married = st.selectbox("Married", ["Yes", "No"])
-            credit_history = st.selectbox("Credit History", ["Good (1)", "Bad (0)"])
-
-        with col2:
-            dependents = st.selectbox("No. of Dependents", ["0", "1", "2", "3+"])
+            dependents = st.selectbox("Dependents", ["0", "1", "2", "3+"])
             education = st.selectbox("Education", ["Graduate", "Not Graduate"])
             self_employed = st.selectbox("Self Employed", ["No", "Yes"])
-            
-        with col3:
-            applicant_income = st.number_input("Applicant Income", min_value=0, value=5000, step=100)
-            coapplicant_income = st.number_input("Coapplicant Income", min_value=0, value=0, step=100)
             property_area = st.selectbox("Property Area", ["Urban", "Semiurban", "Rural"])
-
-        with col4:
-            loan_amount = st.number_input("Loan Amount (thousands)", min_value=0, value=120, step=5)
-            loan_term = st.selectbox("Loan Term (months)", [360, 180, 120, 84, 60, 36, 12, 300, 480], index=0)
+            
+        with col2:
+            applicant_income = st.number_input("Applicant Income ($)", min_value=0, value=5000, step=100)
+            coapplicant_income = st.number_input("Coapplicant Income ($)", min_value=0, value=0, step=100)
+            loan_amount = st.number_input("Loan Amount (in thousands)", min_value=0, value=120, step=5)
+            loan_term = st.selectbox("Loan Term (days)", [360, 180, 120, 84, 60, 36, 12, 300, 480], index=0)
+            credit_history = st.selectbox("Credit History", ["Good (1)", "Bad (0)"])
             
         st.markdown("<br>", unsafe_allow_html=True)
         # Center the submit button
@@ -325,41 +293,33 @@ def render_about(models, filters):
 def main():
     apply_modern_css()
     
-    # Optional Filters Sidebar
-    st.sidebar.markdown("### ⚙️ Filters")
-    filter_credit = st.sidebar.selectbox("Credit History", ["All", "Good (1.0)", "Bad (0.0)"])
-    filter_property = st.sidebar.selectbox("Property Area", ["All", "Urban", "Semiurban", "Rural"])
-    st.sidebar.markdown("---")
-    st.sidebar.caption("Filters apply to uploaded Data Preview")
+    try:
+        st.sidebar.image(Image.open(BASE_DIR / "logo.png"), width=150)
+    except Exception:
+        pass
+    st.sidebar.markdown("### Loan Approval<br>Prediction AI", unsafe_allow_html=True)
+    st.sidebar.markdown("<hr>", unsafe_allow_html=True)
     
-    filters = {
-        "credit_history": filter_credit,
-        "property_area": filter_property
-    }
-
     nav_options = {
-        "Applicant Input": render_home,
-        "Model Performance": render_performance,
+        "Home": render_home,
+        "Performance": render_performance,
         "Visualizations": render_visualizations,
         "About": render_about
     }
     
-    # Global Header
-    st.markdown("<h2>💰 AI-Powered Loan Approval Predictor</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #bbb;'>Make accurate loan predictions with ML - Upload your CSV or enter individual data below.</p>", unsafe_allow_html=True)
-    
-    # Custom styled horizontal radio button mimicking option-menu tabs
-    selection = st.radio(
+    st.sidebar.markdown("**Go to**")
+    selection = st.sidebar.radio(
         "Navigation", 
         list(nav_options.keys()), 
-        horizontal=True, 
         label_visibility="collapsed"
     )
-    st.markdown("---")
+    
+    st.sidebar.markdown("<br><br><br><br><br><br>", unsafe_allow_html=True)
+    st.sidebar.caption("© 2026 AI Loan Predictor")
     
     # Execute the selected page function
     models = load_models()
-    nav_options[selection](models, filters)
+    nav_options[selection](models, {})
 
 if __name__ == "__main__":
     main()
