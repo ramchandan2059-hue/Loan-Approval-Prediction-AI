@@ -314,12 +314,10 @@ def render_visualizations(models, filters):
             
     st.divider()
     
-    _, center_col, _ = st.columns([1, 3, 1])
-    with center_col:
-        st.subheader("Confusion Matrices")
-        cm_img = MODEL_DIR / "confusion_matrices.png"
-        if cm_img.exists():
-            st.image(Image.open(cm_img))
+    st.subheader("Confusion Matrices")
+    cm_img = MODEL_DIR / "confusion_matrices.png"
+    if cm_img.exists():
+        st.image(Image.open(cm_img))
             
     st.divider()
         
