@@ -133,6 +133,9 @@ def render_home(models, filters):
                         st.markdown("### Batch Prediction Results")
                         st.dataframe(pred_df)
                         
+                        # Save to session state for dynamic visualization
+                        st.session_state["uploaded_data"] = pred_df
+                        
                         # Download link
                         csv = pred_df.to_csv(index=False).encode('utf-8')
                         st.download_button(
@@ -249,29 +252,103 @@ def render_performance(models, filters):
 
 def render_visualizations(models, filters):
     st.subheader("📈 Visualizations & Insights")
-    st.markdown("Deep dive into how the models work and which features are most important.")
+    st.markdown("Deep dive into the dataset distributions and model performance metrics.")
     st.markdown("---")
+    
+    # 1. Dataset Explorer
+    st.subheader("Dataset Explorer")
+    df = None
+    is_default = False
+    
+    if "uploaded_data" in st.session_state:
+        df = st.session_state["uploaded_data"]
+        st.info("Currently viewing: **Uploaded Batch Dataset**")
+    else:
+        data_path = BASE_DIR / "data" / "loan.csv"
+        if data_path.exists():
+            df = pd.read_csv(data_path)
+            is_default = True
+            st.info("Currently viewing: **Default Training Dataset** (Upload a CSV in 'Home' to see custom data)")
+            
+    if df is not None:
+        col1, col2 = st.columns(2)
+        with col1:
+            target_col = "Loan_Status" if is_default and "Loan_Status" in df.columns else "Predicted_Status" if "Predicted_Status" in df.columns else None
+            if target_col:
+                st.markdown(f"**{target_col} Distribution**")
+                status_counts = df[target_col].value_counts()
+                st.bar_chart(status_counts)
+            else:
+                st.warning("Target column not found for distribution.")
+                
+        with col2:
+            if "ApplicantIncome" in df.columns:
+                st.markdown("**Applicant Income Histogram**")
+                try:
+                    # Pure streamlit histogram
+                    hist, edges = np.histogram(df["ApplicantIncome"].dropna(), bins=20)
+                    hist_df = pd.DataFrame({"Count": hist}, index=np.round(edges[:-1], 2))
+                    st.bar_chart(hist_df)
+                except Exception:
+                    st.line_chart(df["ApplicantIncome"].reset_index(drop=True))
+    
+    st.divider()
+
+    # 2. Dynamic Model Comparison
+    st.subheader("Model Comparison (Accuracy vs F1-Score)")
+    all_metrics = load_metrics()
+    if all_metrics:
+        comp_data = []
+        for m_name, m_vals in all_metrics.items():
+            comp_data.append({
+                "Model": m_name,
+                "Accuracy": m_vals.get("accuracy", 0),
+                "F1 Score": m_vals.get("f1_score", 0)
+            })
+        comp_df = pd.DataFrame(comp_data).set_index("Model")
+        st.bar_chart(comp_df)
+    else:
+        comparison_img = MODEL_DIR / "model_comparison.png"
+        if comparison_img.exists():
+            st.image(Image.open(comparison_img), caption="Accuracy vs F1-Score across all models")
+            
+    st.divider()
     
     _, center_col, _ = st.columns([1, 3, 1])
     with center_col:
-        st.subheader("Model Comparison")
-        comparison_img = MODEL_DIR / "model_comparison.png"
-        if comparison_img.exists():
-            st.image(Image.open(comparison_img), use_container_width=True, caption="Accuracy vs F1-Score across all models")
-            
-        st.divider()
-        
         st.subheader("Confusion Matrices")
         cm_img = MODEL_DIR / "confusion_matrices.png"
         if cm_img.exists():
-            st.image(Image.open(cm_img), use_container_width=True)
+            st.image(Image.open(cm_img))
             
-        st.divider()
+    st.divider()
+        
+    st.subheader("Feature Importances")
+    if "Random Forest" in models:
+        rf = models["Random Forest"]
+        try:
+            # Extract importances from pipeline or direct model
+            if hasattr(rf, 'steps'):
+                importances = rf.steps[-1][1].feature_importances_
+                # Standard feature names used during training
+                feature_names = ["Gender", "Married", "Dependents", "Education", "Self_Employed", 
+                                 "Property_Area", "ApplicantIncome", "CoapplicantIncome", 
+                                 "LoanAmount", "Loan_Amount_Term", "Credit_History", "TotalIncome_log"]
+            else:
+                importances = rf.feature_importances_
+                feature_names = rf.feature_names_in_ if hasattr(rf, 'feature_names_in_') else [f"Feature {i}" for i in range(len(importances))]
             
-        st.subheader("Feature Importances")
+            imp_df = pd.DataFrame({"Importance": importances}, index=feature_names)
+            imp_df = imp_df.sort_values(by="Importance", ascending=True).tail(10)
+            st.bar_chart(imp_df)
+        except Exception:
+            fi_img = MODEL_DIR / "feature_importance.png"
+            if fi_img.exists():
+                st.image(Image.open(fi_img), caption="Top drivers for the Random Forest model")
+    else:
         fi_img = MODEL_DIR / "feature_importance.png"
         if fi_img.exists():
-            st.image(Image.open(fi_img), use_container_width=True, caption="Top drivers for the Random Forest model")
+            st.image(Image.open(fi_img), caption="Top drivers for the Random Forest model")
 
 def render_about(models, filters):
     st.subheader("ℹ️ About the Project")
