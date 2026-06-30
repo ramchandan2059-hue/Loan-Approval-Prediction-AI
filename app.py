@@ -277,7 +277,7 @@ def render_visualizations(models, filters):
             if target_col:
                 st.markdown(f"**{target_col} Distribution**")
                 status_counts = df[target_col].value_counts()
-                st.bar_chart(status_counts)
+                st.bar_chart(status_counts, color="#3B82F6")
             else:
                 st.warning("Target column not found for distribution.")
                 
@@ -288,9 +288,9 @@ def render_visualizations(models, filters):
                     # Pure streamlit histogram
                     hist, edges = np.histogram(df["ApplicantIncome"].dropna(), bins=20)
                     hist_df = pd.DataFrame({"Count": hist}, index=np.round(edges[:-1], 2))
-                    st.bar_chart(hist_df)
+                    st.bar_chart(hist_df, color="#10B981")
                 except Exception:
-                    st.line_chart(df["ApplicantIncome"].reset_index(drop=True))
+                    st.line_chart(df["ApplicantIncome"].reset_index(drop=True), color="#10B981")
     
     st.divider()
 
@@ -306,7 +306,7 @@ def render_visualizations(models, filters):
                 "F1 Score": m_vals.get("f1_score", 0)
             })
         comp_df = pd.DataFrame(comp_data).set_index("Model")
-        st.bar_chart(comp_df)
+        st.bar_chart(comp_df, color=["#4F46E5", "#E11D48"])
     else:
         comparison_img = MODEL_DIR / "model_comparison.png"
         if comparison_img.exists():
@@ -338,7 +338,7 @@ def render_visualizations(models, filters):
             
             imp_df = pd.DataFrame({"Importance": importances}, index=feature_names)
             imp_df = imp_df.sort_values(by="Importance", ascending=True).tail(10)
-            st.bar_chart(imp_df)
+            st.bar_chart(imp_df, color="#8B5CF6")
         except Exception:
             fi_img = MODEL_DIR / "feature_importance.png"
             if fi_img.exists():
