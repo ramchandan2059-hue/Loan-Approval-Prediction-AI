@@ -37,6 +37,39 @@ def apply_modern_css():
             border-radius: 15px;
             box-shadow: 0 6px 12px rgba(0,0,0,0.15);
         }
+        
+        /* Custom Horizontal Radio Tabs */
+        div[role="radiogroup"] {
+            flex-direction: row;
+            justify-content: flex-start;
+            gap: 30px;
+            padding-bottom: 10px;
+            margin-top: 20px;
+            margin-bottom: 5px;
+        }
+        /* Hide the radio button circle */
+        div[role="radiogroup"] > label > div:first-child {
+            display: none !important;
+        }
+        /* Style the radio button text */
+        div[role="radiogroup"] > label p {
+            font-size: 16px !important;
+            font-weight: 500 !important;
+            color: #b0bec5 !important;
+            transition: all 0.3s ease !important;
+            margin: 0 !important;
+            padding: 5px 10px !important;
+            border-bottom: 3px solid transparent;
+        }
+        div[role="radiogroup"] > label:hover p {
+            color: #ffffff !important;
+            border-bottom: 3px solid rgba(255, 75, 75, 0.5);
+        }
+        /* Style the active selected radio text */
+        div[role="radiogroup"] > label[data-checked="true"] p {
+            color: #ff4b4b !important;
+            border-bottom: 3px solid #ff4b4b !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -68,10 +101,6 @@ def load_metrics():
         return {}
 
 def render_home(models, filters):
-    # Header area
-    st.markdown("<h2>🏦 AI Loan Approval Prediction</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='color: #bbb;'>Enter applicant details below to instantly predict loan approval status with our advanced ML models.</p>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
 
     if not models:
         st.error("Models not found. Please run the training notebook first.")
@@ -373,29 +402,39 @@ def main():
         st.sidebar.image(Image.open(BASE_DIR / "logo.png"), width=150)
     except Exception:
         pass
-    st.sidebar.markdown("### Loan Approval<br>Prediction AI", unsafe_allow_html=True)
-    st.sidebar.markdown("<hr>", unsafe_allow_html=True)
+        
+    st.sidebar.markdown("### ⚙️ Filters")
+    filter_credit = st.sidebar.selectbox("Credit History", ["All", "Good (1.0)", "Bad (0.0)"])
+    filter_property = st.sidebar.selectbox("Property Area", ["All", "Urban", "Semiurban", "Rural"])
+    st.sidebar.markdown("---")
+    st.sidebar.caption("Filters apply to uploaded Data Preview")
     
+    filters = {
+        "credit_history": filter_credit,
+        "property_area": filter_property
+    }
+
     nav_options = {
-        "Home": render_home,
-        "Performance": render_performance,
+        "Applicant Input": render_home,
+        "Model Performance": render_performance,
         "Visualizations": render_visualizations,
         "About": render_about
     }
     
-    st.sidebar.markdown("**Go to**")
-    selection = st.sidebar.radio(
+    st.markdown("<h2>💰 AI-Powered Loan Approval Predictor</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #bbb;'>Make accurate loan predictions with ML - Upload your CSV or enter individual data below.</p>", unsafe_allow_html=True)
+    
+    selection = st.radio(
         "Navigation", 
         list(nav_options.keys()), 
+        horizontal=True, 
         label_visibility="collapsed"
     )
-    
-    st.sidebar.markdown("<br><br><br><br><br><br>", unsafe_allow_html=True)
-    st.sidebar.caption("© 2026 AI Loan Predictor")
+    st.markdown("---")
     
     # Execute the selected page function
     models = load_models()
-    nav_options[selection](models, {})
+    nav_options[selection](models, filters)
 
 if __name__ == "__main__":
     main()
