@@ -5,6 +5,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import joblib
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 from PIL import Image
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -367,7 +370,42 @@ def render_visualizations(models, filters):
             
             imp_df = pd.DataFrame({"Importance": importances}, index=feature_names)
             imp_df = imp_df.sort_values(by="Importance", ascending=True).tail(10)
-            st.bar_chart(imp_df, color="#8B5CF6")
+            
+            # Create a styled Matplotlib horizontal bar chart
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # Normalize importances for color mapping (High=Red, Low=Teal/Blue)
+            # Spectral cmap has Red at 0 and Blue at 1. We want High Importance = Red (0), Low = Blue (1)
+            norm = mcolors.Normalize(vmin=imp_df['Importance'].min(), vmax=imp_df['Importance'].max())
+            cmap = cm.get_cmap('Spectral')
+            colors = [cmap(1.0 - norm(val)) for val in imp_df['Importance']]
+            
+            bars = ax.barh(imp_df.index, imp_df['Importance'], color=colors, height=0.6)
+            
+            # Add text labels on the bars
+            for bar in bars:
+                width = bar.get_width()
+                ax.text(width + 0.005, bar.get_y() + bar.get_height()/2, f'{width:.4f}', 
+                        va='center', ha='left', fontweight='bold', color='#333333')
+            
+            # Title and labels
+            ax.set_title('Top 10 Feature Importances (Random Forest)', fontsize=16, fontweight='bold', color='#1e3a5f', pad=15)
+            ax.set_xlabel('Importance', fontsize=12, labelpad=10, color='#444444')
+            ax.set_ylabel('Feature', fontsize=12, labelpad=10, color='#444444')
+            
+            # Clean up spines and add grid
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_color('#cccccc')
+            ax.spines['bottom'].set_color('#cccccc')
+            ax.tick_params(axis='both', colors='#444444')
+            ax.xaxis.grid(True, linestyle='--', alpha=0.3, color='#cccccc')
+            
+            # Ensure the background is white as requested by the image
+            fig.patch.set_facecolor('white')
+            ax.set_facecolor('white')
+            
+            st.pyplot(fig)
         except Exception:
             fi_img = MODEL_DIR / "feature_importance.png"
             if fi_img.exists():
